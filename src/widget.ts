@@ -118,19 +118,17 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   const sessionName = (ctxRef.sessionManager.getSessionName?.() ?? "")
     .replace(/[\x00-\x1f\x7f]/g, " ").trim();
   const infoWidth = width - avatarWidth - 5;
-  let locationDisplay = theme.fg("dim", truncateToWidth(locationLine, infoWidth, "…"));
+  let locationDisplay: string;
   if (sessionName) {
     const gold = theme.getColorMode() === "truecolor"
       ? "\x1b[38;2;181;158;101m"
       : "\x1b[38;5;143m";
-    if (visibleWidth(sessionName) + 2 <= infoWidth) {
-      const locationBudget = Math.max(1, infoWidth - visibleWidth(sessionName) - 2);
-      locationLine = truncateToWidth(locationLine, locationBudget, "…");
-      const gap = " ".repeat(Math.max(2, infoWidth - visibleWidth(locationLine) - visibleWidth(sessionName)));
-      locationDisplay = `${theme.fg("dim", locationLine)}${gap}${gold}${sessionName}\x1b[39m`;
-    } else {
-      locationDisplay = `${gold}${truncateToWidth(sessionName, infoWidth, "…")}\x1b[39m`;
-    }
+    const displayedName = truncateToWidth(sessionName, Math.max(1, infoWidth - 4), "…");
+    const locationBudget = Math.max(1, infoWidth - visibleWidth(displayedName) - 3);
+    locationLine = truncateToWidth(locationLine, locationBudget, "…");
+    locationDisplay = `${gold}${displayedName}\x1b[39m${theme.fg("dim", ` • ${locationLine}`)}`;
+  } else {
+    locationDisplay = theme.fg("dim", truncateToWidth(locationLine, infoWidth, "…"));
   }
   const dimLines = [modelLine, statsLine].map((line) =>
     theme.fg("dim", visibleWidth(line) > infoWidth ? truncateToWidth(line, infoWidth, "…") : line));
