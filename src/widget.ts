@@ -3,11 +3,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import type { Config, WidgetColor } from "./types.js";
+import type { Config } from "./types.js";
 import type { Animator } from "./animator.js";
 import type { RenderedFrame } from "./renderer.js";
 import { log } from "./log.js";
-import { resolveProgressColor } from "./theme.js";
 
 // --- Token formatting ---
 
@@ -119,13 +118,7 @@ function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWri
 
 // --- Info panel ---
 
-/** Resolve a widget color to a text styler. "thinking-level-color" follows the current thinking level. */
-function colorStyler(color: WidgetColor, thinking: (s: string) => string, theme: any): (s: string) => string {
-  if (color === "thinking-level-color") return thinking;
-  return (s: string) => theme.fg(color, s);
-}
-
-function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any, config: any): string[] {
+function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any, _config: any): string[] {
   if (!ctxRef) return [];
 
   const model = ctxRef.model;
@@ -150,18 +143,9 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   const branch = getGitBranch(cwd);
   const locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
   const infoWidth = width - avatarWidth - 5;
-  const cacheRate = totals.input + totals.cacheRead + totals.cacheWrite > 0
-    ? (totals.cacheRead / (totals.input + totals.cacheRead + totals.cacheWrite)) * 100 : 0;
-  const thinkingStyler = theme.getThinkingBorderColor?.(thinkingLevel)
-    ?? ((s: string) => theme.fg("border", s));
-  const wt = config.theme;
-  const styleModel = (s: string) => theme.bold(colorStyler(wt["model-name"] ?? "accent", thinkingStyler, theme)(s));
-  const styleProgress = colorStyler(resolveProgressColor(context?.percent ?? 0, cacheRate, wt["progress-bar"] ?? {}), thinkingStyler, theme);
-  const styleStats = colorStyler(wt["token-info"] ?? "dim", thinkingStyler, theme);
-  const styleLocation = colorStyler(wt["working-directory"] ?? "warning", thinkingStyler, theme);
-  return [modelLine, contextLine, statsLine, locationLine].map((line, index) => {
+  return [modelLine, contextLine, statsLine, locationLine].map((line) => {
     if (visibleWidth(line) > infoWidth) line = truncateToWidth(line, infoWidth, "…");
-    return [styleModel, styleProgress, styleStats, styleLocation][index](line);
+    return theme.fg("dim", line);
   });
 }
 
@@ -299,12 +283,9 @@ export function createWidgetFactory(deps: WidgetDeps) {
 
         log(`render: kind=${frame.kind}, set="${deps.getCurrentEmoteSet()}"`);
 
-        const thinkingLevel = deps.pi.getThinkingLevel?.() ?? "high";
-        const thinkingStyler = (theme as any).getThinkingBorderColor?.(thinkingLevel)
-          ?? ((s: string) => theme.fg("border", s));
-        const borderColor = colorStyler(config.theme.border ?? "thinking-level-color", thinkingStyler, theme);
-        const separatorColor = colorStyler(config.theme["vertical-separator"] ?? "thinking-level-color", thinkingStyler, theme);
-        const border = borderColor("─".repeat(width));
+        const dim = (text: string) => theme.fg("dim", text);
+        const separatorColor = dim;
+        const border = dim("─".repeat(width));
         const avatarWidth = frame.kind === "text" ? TEXT_CANVAS_COLS : config.size;
         const infoLines = buildInfoLines(width, avatarWidth, deps.getCtxRef(), deps.pi, theme, config);
 
