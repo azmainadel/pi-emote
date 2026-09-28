@@ -116,9 +116,7 @@ function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWri
 
 // --- Info panel ---
 
-// --- Info panel ---
-
-function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any, _config: any): string[] {
+function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any): string[] {
   if (!ctxRef) return [];
 
   const model = ctxRef.model;
@@ -141,12 +139,29 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   ].join(" ");
   const cwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
   const branch = getGitBranch(cwd);
-  const locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
+  let locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
+  const sessionName = (ctxRef.sessionManager.getSessionName?.() ?? "")
+    .replace(/[\x00-\x1f\x7f]/g, " ").trim();
   const infoWidth = width - avatarWidth - 5;
-  return [modelLine, contextLine, statsLine, locationLine].map((line) => {
-    if (visibleWidth(line) > infoWidth) line = truncateToWidth(line, infoWidth, "…");
-    return theme.fg("dim", line);
-  });
+  let locationDisplay = theme.fg("dim", truncateToWidth(locationLine, infoWidth, "…"));
+  if (sessionName) {
+    const gold = theme.getColorMode() === "truecolor"
+      ? "\x1b[38;2;181;158;101m"
+      : "\x1b[38;5;143m";
+    if (visibleWidth(sessionName) + 2 <= infoWidth) {
+      const locationBudget = Math.max(1, infoWidth - visibleWidth(sessionName) - 2);
+      locationLine = truncateToWidth(locationLine, locationBudget, "…");
+      const gap = " ".repeat(Math.max(2, infoWidth - visibleWidth(locationLine) - visibleWidth(sessionName)));
+      locationDisplay = `${theme.fg("dim", locationLine)}${gap}${gold}${sessionName}\x1b[39m`;
+    } else {
+      locationDisplay = `${gold}${truncateToWidth(sessionName, infoWidth, "…")}\x1b[39m`;
+    }
+  }
+  const dimLines = [modelLine, statsLine].map((line) =>
+    theme.fg("dim", visibleWidth(line) > infoWidth ? truncateToWidth(line, infoWidth, "…") : line));
+  const progressDisplay = theme.fg("text", visibleWidth(contextLine) > infoWidth
+    ? truncateToWidth(contextLine, infoWidth, "…") : contextLine);
+  return [dimLines[0], progressDisplay, dimLines[1], locationDisplay];
 }
 
 // --- Render helpers ---
@@ -287,7 +302,7 @@ export function createWidgetFactory(deps: WidgetDeps) {
         const separatorColor = dim;
         const border = dim("─".repeat(width));
         const avatarWidth = frame.kind === "text" ? TEXT_CANVAS_COLS : config.size;
-        const infoLines = buildInfoLines(width, avatarWidth, deps.getCtxRef(), deps.pi, theme, config);
+        const infoLines = buildInfoLines(width, avatarWidth, deps.getCtxRef(), deps.pi, theme);
 
         const lines: string[] = [];
         lines.push(border);
