@@ -1,4 +1,8 @@
 import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve, sep } from "node:path";
 import type { Config, WidgetColor } from "./types.js";
 import type { Animator } from "./animator.js";
 import type { RenderedFrame } from "./renderer.js";
@@ -8,15 +12,77 @@ import { resolveProgressColor } from "./theme.js";
 // --- Token formatting ---
 
 function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 10_000) return `${Math.round(count / 1000)}K`;
-  if (count >= 1_000) return `${(count / 1000).toFixed(1)}K`;
-  return count.toString();
+  if (count < 1_000) return `${count}`;
+  if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
+  if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
+  if (count < 10_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  return `${Math.round(count / 1_000_000)}M`;
+}
+
+const PROVIDER_ALIASES: Record<string, string> = {
+  "openai-codex": "codex", "claude-bridge": "claude", anthropic: "claude",
+  kiro: "kiro", zai: "glm", "zai-coding": "glm", "zai-coding-cn": "glm",
+  openrouter: "openrouter", "kimi-coding": "kimi", moonshot: "kimi", xai: "grok",
+};
+const THINKING_ALIASES: Record<string, string> = {
+  minimal: "min", medium: "med", high: "hi", xhigh: "xhi",
+};
+
+let providerAliasCache: Record<string, string> | undefined;
+function providerAliases(): Record<string, string> {
+  if (providerAliasCache) return providerAliasCache;
+  try {
+    const config = JSON.parse(readFileSync(join(homedir(), ".pi/agent/pi-glance.json"), "utf8"));
+    const aliases = config?.providerAliases;
+    if (aliases && typeof aliases === "object" && !Array.isArray(aliases)) {
+      for (const [key, value] of Object.entries(aliases)) {
+        if (typeof value === "string" && value.trim()) PROVIDER_ALIASES[key.toLowerCase()] = value.trim();
+      }
+    }
+  } catch { /* Optional pi-glance aliases; fall back to built-in labels. */ }
+  providerAliasCache = PROVIDER_ALIASES;
+  return providerAliasCache;
+}
+
+function sessionUsage(entries: any[]): { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number } {
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  for (const entry of entries) {
+    let usage: any;
+    if (entry.type === "usage") usage = entry.usage;
+    else if (entry.type === "message" && ["assistant", "toolResult"].includes(entry.message?.role)) usage = entry.message.usage;
+    else if (entry.type === "branch_summary" || entry.type === "compaction") usage = entry.usage;
+    if (!usage) continue;
+    totals.input += usage.input ?? 0;
+    totals.output += usage.output ?? 0;
+    totals.cacheRead += usage.cacheRead ?? 0;
+    totals.cacheWrite += usage.cacheWrite ?? 0;
+    totals.cost += usage.cost?.total ?? 0;
+  }
+  return totals;
+}
+
+function compactDirectory(cwd: string): string {
+  const parts = resolve(cwd).split(sep).filter(Boolean);
+  return `/${parts.slice(-2).join(sep)}`;
+}
+
+const branchCache = new Map<string, { checkedAt: number; branch: string }>();
+function getGitBranch(cwd: string): string {
+  const cached = branchCache.get(cwd);
+  if (cached && Date.now() - cached.checkedAt < 2_000) return cached.branch;
+  let branch = "";
+  try {
+    branch = execFileSync("git", ["-C", cwd, "branch", "--show-current"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 500,
+    }).trim().replace(/[\x00-\x1f\x7f]/g, " ");
+  } catch { /* Not in a Git worktree, or Git is unavailable. */ }
+  branchCache.set(cwd, { checkedAt: Date.now(), branch });
+  return branch;
 }
 
 // --- Progress bar ---
 
-function buildProgressBar(usage: any, latestCacheRead: number, latestInput: number, latestCacheWrite: number): string {
+function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWrite: number): string {
   const segments = 20;
   const subsPerSegment = 8;
   const totalSubs = segments * subsPerSegment;
@@ -25,9 +91,9 @@ function buildProgressBar(usage: any, latestCacheRead: number, latestInput: numb
   // Granular sub-unit fill with floor-fill minimum of one full segment
   const filledSubs = percent === 0 ? 0 : Math.max(Math.ceil((percent / 100) * totalSubs), subsPerSegment);
   
-  // Calculate cache vs input ratio from latest message
-  const totalPrompt = latestInput + latestCacheRead + latestCacheWrite;
-  const cacheRatio = totalPrompt > 0 ? latestCacheRead / totalPrompt : 0;
+  // Tint cached context separately, based on cumulative session usage.
+  const totalPrompt = input + cacheRead + cacheWrite;
+  const cacheRatio = totalPrompt > 0 ? cacheRead / totalPrompt : 0;
   const cacheSubs = Math.floor(filledSubs * cacheRatio);
   
   const eighthBlockChars = ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
@@ -46,9 +112,7 @@ function buildProgressBar(usage: any, latestCacheRead: number, latestInput: numb
     return ' ';
   }).join('');
   
-  const pctStr = percent.toFixed(1);
-  const tokensStr = usage?.tokens != null ? formatTokens(usage.tokens) : '?';
-  return `⏵▕${bar}▏ ${tokensStr} (${pctStr}%)`;
+  return `🧠 ▕${bar}▏ ${percent.toFixed(1)}% / ${formatTokens(usage?.contextWindow ?? 0)}`;
 }
 
 // --- Info panel ---
@@ -62,86 +126,42 @@ function colorStyler(color: WidgetColor, thinking: (s: string) => string, theme:
 }
 
 function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any, config: any): string[] {
-  const lines: string[] = [];
-  if (!ctxRef) return lines;
+  if (!ctxRef) return [];
 
-  // Line 1: Model + thinking level + context window
   const model = ctxRef.model;
-  let modelStr = model?.name ?? "no model";
-  const thinkingLevel = pi.getThinkingLevel?.() ?? "high";
-  if (model?.reasoning) {
-    modelStr += ` • ${thinkingLevel}`;
-  }
-  
-  const usage = ctxRef.getContextUsage?.();
-  if (usage) {
-    const window = formatTokens(usage.contextWindow);
-    modelStr += ` • ${window}`;
-  }
-  lines.push(modelStr);
+  const thinkingLevel = ctxRef.thinkingLevel ?? pi.getThinkingLevel?.() ?? "high";
+  const thinkingLabel = THINKING_ALIASES[thinkingLevel] ?? thinkingLevel;
+  const aliases = providerAliases();
+  const provider = (model?.provider ?? "").toLowerCase();
+  const modelId = (model?.id ?? "").replace(/[\x00-\x1f\x7f]/g, " ").toLowerCase();
+  const modelLine = [aliases[provider] ?? provider, modelId, thinkingLabel].filter(Boolean).join(" • ");
 
-  // Line 2: Progress bar
-  // Calculate cumulative totals and extract latest message stats
-  let totalInput = 0;
-  let totalOutput = 0;
-  let totalCost = 0;
-  let latestInput = 0;
-  let latestCacheRead = 0;
-  let latestCacheWrite = 0;
-  
-  try {
-    const entries = ctxRef.sessionManager.getEntries();
-    for (const entry of entries) {
-      if (entry.type === "message" && entry.message.role === "assistant") {
-        const msgInput = entry.message.usage?.input ?? 0;
-        const msgCacheRead = entry.message.usage?.cacheRead ?? 0;
-        const msgCacheWrite = entry.message.usage?.cacheWrite ?? 0;
-        
-        totalInput += msgInput;
-        totalOutput += entry.message.usage?.output ?? 0;
-        totalCost += entry.message.usage?.cost?.total ?? 0;
-        
-        // Keep track of the latest message's stats
-        latestInput = msgInput;
-        latestCacheRead = msgCacheRead;
-        latestCacheWrite = msgCacheWrite;
-      }
-    }
-  } catch (_) { /* ignore if not available */ }
+  const context = ctxRef.getContextUsage?.();
+  let totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  try { totals = sessionUsage(ctxRef.sessionManager.getEntries()); } catch { /* session entries may be unavailable */ }
 
-  const progressBar = buildProgressBar(usage, latestCacheRead, latestInput, latestCacheWrite);
-  lines.push(progressBar);
-
-  // Line 3: Stats with cache hit rate
-  // Calculate cache hit rate using pi's formula
-  const latestPromptTokens = latestInput + latestCacheRead + latestCacheWrite;
-  const cacheHitRate = latestPromptTokens > 0 ? (latestCacheRead / latestPromptTokens) * 100 : 0;
-  
-  const statsStr = `↑${formatTokens(totalInput)} ↓${formatTokens(totalOutput)} ⇞${cacheHitRate.toFixed(1)}% $${totalCost.toFixed(3)}`;
-  lines.push(statsStr);
-
-  // Line 4: Current working directory
-  let pwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
-  const home = process.env.HOME || process.env.USERPROFILE;
-  if (home && pwd.startsWith(home)) {
-    pwd = `~${pwd.slice(home.length)}`;
-  }
-  lines.push(pwd);
-
+  const contextLine = buildProgressBar(context, totals.cacheRead, totals.input, totals.cacheWrite);
+  const statsLine = [
+    "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`, "♻️",
+    `${formatTokens(totals.cacheRead)}`, ...(totals.cacheWrite ? [`W${formatTokens(totals.cacheWrite)}`] : []),
+    "💰", `$${totals.cost.toFixed(3)}`,
+  ].join(" ");
+  const cwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
+  const branch = getGitBranch(cwd);
+  const locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
   const infoWidth = width - avatarWidth - 5;
-
+  const cacheRate = totals.input + totals.cacheRead + totals.cacheWrite > 0
+    ? (totals.cacheRead / (totals.input + totals.cacheRead + totals.cacheWrite)) * 100 : 0;
   const thinkingStyler = theme.getThinkingBorderColor?.(thinkingLevel)
     ?? ((s: string) => theme.fg("border", s));
   const wt = config.theme;
   const styleModel = (s: string) => theme.bold(colorStyler(wt["model-name"] ?? "accent", thinkingStyler, theme)(s));
-  const styleProgress = colorStyler(resolveProgressColor(usage?.percent ?? 0, cacheHitRate, wt["progress-bar"] ?? {}), thinkingStyler, theme);
+  const styleProgress = colorStyler(resolveProgressColor(context?.percent ?? 0, cacheRate, wt["progress-bar"] ?? {}), thinkingStyler, theme);
   const styleStats = colorStyler(wt["token-info"] ?? "dim", thinkingStyler, theme);
-  const stylePwd = colorStyler(wt["working-directory"] ?? "warning", thinkingStyler, theme);
-  const styleFns = [styleModel, styleProgress, styleStats, stylePwd];
-
-  return lines.map((l, i) => {
-    if (visibleWidth(l) > infoWidth) l = truncateToWidth(l, infoWidth, "…");
-    return styleFns[i](l);
+  const styleLocation = colorStyler(wt["working-directory"] ?? "warning", thinkingStyler, theme);
+  return [modelLine, contextLine, statsLine, locationLine].map((line, index) => {
+    if (visibleWidth(line) > infoWidth) line = truncateToWidth(line, infoWidth, "…");
+    return [styleModel, styleProgress, styleStats, styleLocation][index](line);
   });
 }
 
@@ -151,7 +171,7 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
  * Kitty image layout: image sequence on row 0 (zero-width, cursor doesn't move),
  * avatarPad fills the space. Info text beside the image on all rows.
  */
-function renderKittyFrame(frame: RenderedFrame & { kind: "image" }, width: number, config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
+function renderKittyFrame(frame: RenderedFrame & { kind: "image" }, _width: number, config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
   const sep = separatorColor("│");
   const leftMargin = " ";
   const avatarPad = " ".repeat(config.size);
@@ -182,7 +202,7 @@ function renderKittyFrame(frame: RenderedFrame & { kind: "image" }, width: numbe
  *
  * Layout: frame.rows total (frame.rows-1 text rows + 1 image row).
  */
-function renderITermFrame(frame: RenderedFrame & { kind: "image" }, width: number, config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
+function renderITermFrame(frame: RenderedFrame & { kind: "image" }, _width: number, config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
   const sep = separatorColor("│");
   const size = config.size;
   const skipPad = `\x1b[${1 + size}C`;
@@ -206,7 +226,7 @@ function renderITermFrame(frame: RenderedFrame & { kind: "image" }, width: numbe
 const TEXT_CANVAS_COLS = 8;
 const TEXT_CANVAS_ROWS = 4;
 
-function renderTextFrame(frame: RenderedFrame & { kind: "text" }, width: number, _config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
+function renderTextFrame(frame: RenderedFrame & { kind: "text" }, _width: number, _config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
   const sep = separatorColor("│");
   const leftMargin = " ";
   const avatarPad = " ".repeat(TEXT_CANVAS_COLS);
@@ -240,7 +260,7 @@ function renderTextFrame(frame: RenderedFrame & { kind: "text" }, width: number,
  * Unicode placeholder layout: placeholder text lines fill rows 0–N.
  * Each line is already config.size wide (placeholder chars). Info beside it.
  */
-function renderPlaceholderFrame(frame: RenderedFrame & { kind: "placeholder" }, width: number, config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
+function renderPlaceholderFrame(frame: RenderedFrame & { kind: "placeholder" }, _width: number, _config: Config, infoLines: string[], separatorColor: (s: string) => string): string[] {
   const sep = separatorColor("│");
   const leftMargin = " ";
   const lines: string[] = [];
