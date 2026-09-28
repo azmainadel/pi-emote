@@ -81,36 +81,11 @@ function getGitBranch(cwd: string): string {
 
 // --- Progress bar ---
 
-function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWrite: number): { bar: string; details: string } {
+function buildProgressBar(usage: any): { bar: string; details: string } {
   const segments = 16;
-  const subsPerSegment = 8;
-  const totalSubs = segments * subsPerSegment;
   const percent = usage?.percent ?? 0;
-  
-  // Granular sub-unit fill with floor-fill minimum of one full segment
-  const filledSubs = percent === 0 ? 0 : Math.max(Math.ceil((percent / 100) * totalSubs), subsPerSegment);
-  
-  // Tint cached context separately, based on cumulative session usage.
-  const totalPrompt = input + cacheRead + cacheWrite;
-  const cacheRatio = totalPrompt > 0 ? cacheRead / totalPrompt : 0;
-  const cacheSubs = Math.floor(filledSubs * cacheRatio);
-  
-  const eighthBlockChars = ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-  
-  const bar = Array.from({ length: segments }, (_, i) => {
-    const segStart = i * subsPerSegment;
-    const segEnd = segStart + subsPerSegment;
-    
-    const cacheInSeg = Math.max(0, Math.min(cacheSubs, segEnd) - segStart);
-    const inputInSeg = Math.max(0, Math.min(filledSubs, segEnd) - Math.max(cacheSubs, segStart));
-    
-    // If cache and input share a bin, input fills the bin at 100%
-    if (cacheInSeg > 0 && inputInSeg > 0) return '█';
-    if (inputInSeg > 0) return eighthBlockChars[inputInSeg - 1];
-    if (cacheInSeg > 0) return '░';
-    return ' ';
-  }).join('');
-  
+  const filled = Math.round((Math.max(0, Math.min(percent, 100)) / 100) * segments);
+  const bar = "█".repeat(filled) + "░".repeat(segments - filled);
   return { bar, details: `${percent.toFixed(1)}% / ${formatTokens(usage?.contextWindow ?? 0)}` };
 }
 
@@ -131,7 +106,7 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   let totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
   try { totals = sessionUsage(ctxRef.sessionManager.getEntries()); } catch { /* session entries may be unavailable */ }
 
-  const progress = buildProgressBar(context, totals.cacheRead, totals.input, totals.cacheWrite);
+  const progress = buildProgressBar(context);
   const statsLine = [
     "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`, "♻️",
     `${formatTokens(totals.cacheRead)}`, ...(totals.cacheWrite ? [`W${formatTokens(totals.cacheWrite)}`] : []),
