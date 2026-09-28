@@ -81,8 +81,8 @@ function getGitBranch(cwd: string): string {
 
 // --- Progress bar ---
 
-function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWrite: number): string {
-  const segments = 20;
+function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWrite: number): { bar: string; details: string } {
+  const segments = 16;
   const subsPerSegment = 8;
   const totalSubs = segments * subsPerSegment;
   const percent = usage?.percent ?? 0;
@@ -111,7 +111,7 @@ function buildProgressBar(usage: any, cacheRead: number, input: number, cacheWri
     return ' ';
   }).join('');
   
-  return `🧠 ▕${bar}▏ ${percent.toFixed(1)}% / ${formatTokens(usage?.contextWindow ?? 0)}`;
+  return { bar, details: `${percent.toFixed(1)}% / ${formatTokens(usage?.contextWindow ?? 0)}` };
 }
 
 // --- Info panel ---
@@ -131,7 +131,7 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   let totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
   try { totals = sessionUsage(ctxRef.sessionManager.getEntries()); } catch { /* session entries may be unavailable */ }
 
-  const contextLine = buildProgressBar(context, totals.cacheRead, totals.input, totals.cacheWrite);
+  const progress = buildProgressBar(context, totals.cacheRead, totals.input, totals.cacheWrite);
   const statsLine = [
     "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`, "♻️",
     `${formatTokens(totals.cacheRead)}`, ...(totals.cacheWrite ? [`W${formatTokens(totals.cacheWrite)}`] : []),
@@ -159,8 +159,9 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   }
   const dimLines = [modelLine, statsLine].map((line) =>
     theme.fg("dim", visibleWidth(line) > infoWidth ? truncateToWidth(line, infoWidth, "…") : line));
-  const progressDisplay = theme.fg("text", visibleWidth(contextLine) > infoWidth
-    ? truncateToWidth(contextLine, infoWidth, "…") : contextLine);
+  const progressLine = `${theme.fg("dim", "🧠 ")}${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
+  const progressDisplay = visibleWidth(progressLine) > infoWidth
+    ? truncateToWidth(progressLine, infoWidth, "…") : progressLine;
   return [dimLines[0], progressDisplay, dimLines[1], locationDisplay];
 }
 
