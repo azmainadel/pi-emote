@@ -252,14 +252,31 @@ export interface WidgetDeps {
   getCurrentEmoteSet: () => string;
 }
 
+/**
+ * True when a modal dialog owns the UI (e.g. ask_user_question, /model picker,
+ * MCP approval). Dialogs replace the editor and move focus to a non-editor
+ * component; the editor (and custom editors) expose getText().
+ */
+function isDialogActive(tui: any): boolean {
+  try {
+    if (!tui || typeof tui.getFocusedComponent !== "function") return false;
+    const focused = tui.getFocusedComponent();
+    if (!focused) return false;
+    return typeof focused.getText !== "function";
+  } catch {
+    return false;
+  }
+}
+
 export function createWidgetFactory(deps: WidgetDeps) {
-  return (_tui: any, theme: any) => {
-    deps.animator.setTui(_tui);
+  return (tui: any, theme: any) => {
+    deps.animator.setTui(tui);
     return {
       render(width: number): string[] {
         const { animator, config } = deps;
 
         if (width < config.hideBelow) return [];
+        if (isDialogActive(tui)) return [];
 
         const frame = animator.getRenderedFrame();
         if (!frame) {
