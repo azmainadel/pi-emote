@@ -91,7 +91,7 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   if (!ctxRef) return [];
 
   const model = ctxRef.model;
-  const thinkingLevel = (ctxRef.thinkingLevel ?? pi.getThinkingLevel?.() ?? "high").toLowerCase();
+  const thinkingLevel = (ctxRef.thinkingLevel ?? pi.getThinkingLevel?.() ?? "default").toLowerCase();
   const aliases = providerAliases();
   const provider = (model?.provider ?? "").toLowerCase();
   const modelId = (model?.id ?? "").replace(/[\x00-\x1f\x7f]/g, " ").toLowerCase();
