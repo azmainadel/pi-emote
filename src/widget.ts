@@ -293,6 +293,8 @@ export function createWidgetFactory(deps: WidgetDeps) {
           lines.push(...renderTextFrame(frame, width, config, infoLines, separatorColor));
         }
 
+        lines.push("");
+
         return lines;
       },
       invalidate() {},

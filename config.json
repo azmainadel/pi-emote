@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "debug": false,
-  "size": 8,
+  "size": 7,
   "readingSpeed": 4,
   "hideBelow": 40,
   "holdDuration": {
@@ -9,7 +9,7 @@
     "success": 1200,
     "failure": 1200
   },
-  "blinkInterval": [3000, 6000],
+  "blinkInterval": [2000, 4000],
   "talkTickMs": 120,
   "cycleMs": 500,
   "emotes": [
