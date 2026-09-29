@@ -30,6 +30,7 @@ pi-emote uses layered configuration with deep merge. Higher-priority layers over
   },
   "blinkInterval": [3000, 6000],
   "talkTickMs": 120,
+  "talkMaxMs": 5000,
   "cycleMs": 500,
   "emotes": [
     { "model": "*", "emote-set": "default" }
@@ -52,6 +53,7 @@ pi-emote uses layered configuration with deep merge. Higher-priority layers over
 - **holdDuration** — How long (ms) to display hi/success/failure before transitioning.
 - **blinkInterval** — Random range `[min, max]` (ms) between idle blinks and think swaps.
 - **talkTickMs** — Interval (ms) between mouth frame changes during talk.
+- **talkMaxMs** — Maximum continuous talk time (ms); drops to idle after this even while tokens still stream.
 - **cycleMs** — Frame cycle interval (ms) for read/write/tool animations.
 - **emotes** — Model-to-emote-set mapping (see below).
 - **terminals** — Terminal-to-renderer mapping (see below).

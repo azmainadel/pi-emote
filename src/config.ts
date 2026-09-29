@@ -45,6 +45,7 @@ const DEFAULTS: Config = {
   holdDuration: { hi: 2000, success: 1200, failure: 1200 },
   blinkInterval: [3000, 6000],
   talkTickMs: 120,
+  talkMaxMs: 5000,
   cycleMs: 500,
   emotes: [{ model: "*", "emote-set": "default" }],
   terminals: [

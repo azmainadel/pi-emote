@@ -28,6 +28,7 @@ export class Animator {
   private thinkTimer: ReturnType<typeof setTimeout> | null = null;
   private talkGapTimer: ReturnType<typeof setTimeout> | null = null;
   private talkDurationTimer: ReturnType<typeof setTimeout> | null = null;
+  private talkMaxTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Cycle state
   private cycleIndex = 0;
@@ -90,6 +91,7 @@ export class Animator {
     if (this.talkGapTimer) { clearTimeout(this.talkGapTimer); this.talkGapTimer = null; }
     if (this.talkDurationTimer) { clearTimeout(this.talkDurationTimer); this.talkDurationTimer = null; }
     if (this.thinkTimer) { clearTimeout(this.thinkTimer); this.thinkTimer = null; }
+    if (this.talkMaxTimer) { clearTimeout(this.talkMaxTimer); this.talkMaxTimer = null; }
   }
 
   private clearStateTimers() {
@@ -99,6 +101,7 @@ export class Animator {
     if (this.talkGapTimer) { clearTimeout(this.talkGapTimer); this.talkGapTimer = null; }
     if (this.talkDurationTimer) { clearTimeout(this.talkDurationTimer); this.talkDurationTimer = null; }
     if (this.thinkTimer) { clearTimeout(this.thinkTimer); this.thinkTimer = null; }
+    if (this.talkMaxTimer) { clearTimeout(this.talkMaxTimer); this.talkMaxTimer = null; }
   }
 
   // --- State transitions ---
@@ -213,6 +216,12 @@ export class Animator {
     this.talkMouthClosed = false;
 
     this.renderer.showTalkFrame(this.emotesConfig);
+
+    // Cap continuous talking: drop to idle after talkMaxMs even if tokens
+    // keep streaming (long replies shouldn't flap for minutes).
+    this.talkMaxTimer = setTimeout(() => {
+      if (this.currentState === "talk") this.transitionTo("idle");
+    }, this.config.talkMaxMs);
 
     this.talkTimer = setInterval(() => {
       if (this.currentState !== "talk") return;

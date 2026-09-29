@@ -41,6 +41,7 @@ export interface Config {
   holdDuration: { hi: number; success: number; failure: number };
   blinkInterval: [number, number];
   talkTickMs: number;
+  talkMaxMs: number;
   cycleMs: number;
   emotes: EmoteMapping[];
   terminals: TerminalMapping[];
