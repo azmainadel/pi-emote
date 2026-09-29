@@ -7,3 +7,7 @@ Install with:
 ```bash
 pi install git:github.com/azmainadel/pi-emote
 ```
+
+## Emotes
+
+![All emote states](emotes-contact-sheet.png)
