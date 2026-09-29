@@ -102,11 +102,13 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   try { totals = sessionUsage(ctxRef.sessionManager.getEntries()); } catch { /* session entries may be unavailable */ }
 
   const progress = buildProgressBar(context);
-  const statsLine = [
+  const statsParts = [
     "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`, "♻️",
     `${formatTokens(totals.cacheRead)}`, ...(totals.cacheWrite ? [`W${formatTokens(totals.cacheWrite)}`] : []),
-    "💰", `$${totals.cost.toFixed(3)}`,
-  ].join(" ");
+  ];
+  // Hide cost when the model has no pricing (e.g. subscription bridges report zero).
+  if (totals.cost > 0) statsParts.push("💰", `$${totals.cost.toFixed(3)}`);
+  const statsLine = statsParts.join(" ");
   const cwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
   const branch = getGitBranch(cwd);
   let locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
