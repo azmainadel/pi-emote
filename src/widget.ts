@@ -23,10 +23,6 @@ const PROVIDER_ALIASES: Record<string, string> = {
   kiro: "kiro", zai: "glm", "zai-coding": "glm", "zai-coding-cn": "glm",
   openrouter: "openrouter", "kimi-coding": "kimi", moonshot: "kimi", xai: "grok",
 };
-const THINKING_ALIASES: Record<string, string> = {
-  minimal: "min", medium: "med", high: "hi", xhigh: "xhi",
-};
-
 let providerAliasCache: Record<string, string> | undefined;
 function providerAliases(): Record<string, string> {
   if (providerAliasCache) return providerAliasCache;
@@ -95,12 +91,11 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   if (!ctxRef) return [];
 
   const model = ctxRef.model;
-  const thinkingLevel = ctxRef.thinkingLevel ?? pi.getThinkingLevel?.() ?? "high";
-  const thinkingLabel = THINKING_ALIASES[thinkingLevel] ?? thinkingLevel;
+  const thinkingLevel = (ctxRef.thinkingLevel ?? pi.getThinkingLevel?.() ?? "high").toLowerCase();
   const aliases = providerAliases();
   const provider = (model?.provider ?? "").toLowerCase();
   const modelId = (model?.id ?? "").replace(/[\x00-\x1f\x7f]/g, " ").toLowerCase();
-  const modelLine = [aliases[provider] ?? provider, modelId, thinkingLabel].filter(Boolean).join(" • ");
+  const modelLine = [aliases[provider] ?? provider, modelId, thinkingLevel].filter(Boolean).join(" • ");
 
   const context = ctxRef.getContextUsage?.();
   let totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
