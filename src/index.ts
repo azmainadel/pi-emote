@@ -1,13 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 
 import type { EmoteState, ResolvedRenderer } from "./types.js";
 import type { Renderer } from "./renderer.js";
 import { log, setDebug } from "./log.js";
 import { loadLayeredConfig } from "./config.js";
-import { resolveEmoteSet, findEmoteSetDir, loadEmotesConfig } from "./emotes.js";
+import { resolveEmoteSet, findEmoteSetDir, loadEmotesConfig, listEmoteSets } from "./emotes.js";
 import { KittyRenderer } from "./render_kitty.js";
 import { TmuxKittyRenderer } from "./render_tmux_kitty.js";
 import { TmuxKittyUnicodeRenderer } from "./render_tmux_kitty_unicode.js";
@@ -127,6 +128,58 @@ export default function (pi: ExtensionAPI) {
       }
     }
   }
+
+  // --- /set-emote: pick an emote set interactively ---
+
+  pi.registerCommand("set-emote", {
+    description: "Pick the emote set for the avatar",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+
+      const sets = listEmoteSets(extDir, cwd);
+      if (sets.length === 0) {
+        ctx.ui.notify("No emote sets found", "warning");
+        return;
+      }
+
+      const options = sets.map((s) => `${s.name}  (${s.source}${s.name === currentEmoteSet ? ", current" : ""})`);
+      const choice = await ctx.ui.select("Emote set", options);
+      if (!choice) return;
+
+      const setName = choice.replace(/\s+\([^)]*\)$/, "");
+      if (!sets.some((s) => s.name === setName)) return;
+
+      // Persist as the catch-all default in the user config layer.
+      const userConfigPath = join(homedir(), ".pi", "agent", "extensions", "pi-emote", "config.json");
+      try {
+        let userConfig: any = {};
+        try { userConfig = JSON.parse(readFileSync(userConfigPath, "utf-8")); } catch { /* no user config yet */ }
+        const entries = Array.isArray(userConfig.emotes)
+          ? userConfig.emotes.filter((e: any) => e?.model && e.model !== "*")
+          : [];
+        entries.push({ model: "*", "emote-set": setName });
+        userConfig.emotes = entries;
+        mkdirSync(dirname(userConfigPath), { recursive: true });
+        writeFileSync(userConfigPath, JSON.stringify(userConfig, null, 2) + "\n");
+      } catch (err) {
+        log(`set-emote: failed to persist user config: ${err}`);
+        ctx.ui.notify("Could not save emote set choice", "error");
+        return;
+      }
+
+      // Apply in-memory so model/thinking switches keep the same set.
+      config.emotes = config.emotes.filter((e: any) => e?.model && e.model !== "*");
+      config.emotes.push({ model: "*", "emote-set": setName });
+
+      loadEmoteSet(setName);
+      animator.resetRenderCache();
+      if (widgetActive && animator.currentState === "idle") animator.enterIdle();
+      else if (widgetActive) renderer.showRandomFrame(animator.currentState, true);
+
+      log(`set-emote: switched to "${setName}"`);
+      ctx.ui.notify(`Emote set: ${setName}`, "info");
+    },
+  });
 
   // --- Events ---
 

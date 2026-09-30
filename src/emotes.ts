@@ -36,6 +36,42 @@ export function resolveEmoteSet(modelId: string, thinkingLevel: string, emotes: 
 
 // --- Emote Set Location ---
 
+// --- Emote Set Location ---
+
+export interface EmoteSetInfo {
+  name: string;
+  source: "project" | "user" | "extension";
+}
+
+/**
+ * Discover available emote sets across all config locations.
+ * Priority order (first seen wins on duplicate names): project → user → extension.
+ */
+export function listEmoteSets(extDir: string, cwd: string): EmoteSetInfo[] {
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const roots: Array<[string, EmoteSetInfo["source"]]> = [
+    [join(cwd, ".pi", "extensions", "pi-emote", "emotes"), "project"],
+    [join(homeDir, ".pi", "agent", "extensions", "pi-emote", "emotes"), "user"],
+    [join(extDir, "emotes"), "extension"],
+  ];
+
+  const seen = new Set<string>();
+  const out: EmoteSetInfo[] = [];
+  for (const [dir, source] of roots) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || seen.has(entry.name)) continue;
+      const setDir = join(dir, entry.name);
+      // A valid set contains state subdirectories (or emotes.json for ASCII sets).
+      const hasStateDir = readdirSync(setDir, { withFileTypes: true }).some((e) => e.isDirectory());
+      if (!hasStateDir && !existsSync(join(setDir, "emotes.json")) && !existsSync(join(setDir, "ascii.yaml"))) continue;
+      seen.add(entry.name);
+      out.push({ name: entry.name, source });
+    }
+  }
+  return out;
+}
+
 export function findEmoteSetDir(setName: string, extDir: string, cwd: string): string {
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
 
