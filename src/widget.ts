@@ -145,12 +145,12 @@ function buildInfoLines(width: number, infoWidth: number, ctxRef: any, pi: any, 
 
   const progress = buildProgressBar(context);
   const statsParts = [
-    "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`,
+    "⚡️", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`,
   ];
   statsParts.push("♻️", `${formatTokens(totals.cacheRead)}`);
   if (totals.cacheWrite) statsParts.push(`W${formatTokens(totals.cacheWrite)}`);
   // Hide cost when the model has no pricing (e.g. subscription bridges report zero).
-  if (totals.cost > 0) statsParts.push("💰", `$${totals.cost.toFixed(3)}`);
+  if (totals.cost > 0) statsParts.push("💸", `$${totals.cost.toFixed(3)}`);
   const statsLine = statsParts.join(" ");
   const cwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
   const branch = getGitBranch(cwd);
@@ -166,14 +166,14 @@ function buildInfoLines(width: number, infoWidth: number, ctxRef: any, pi: any, 
   const startMs = cachedSessionStartMs(entries);
   const elapsed = formatElapsed(Math.max(0, Date.now() - startMs));
   const turns = countTurns(entries);
-  const timeTurnsLine = `⏱️ ${elapsed} · 🔄 ${turns}`;
+  const timeTurnsLine = `⏰ ${elapsed} · 🔁 ${turns}`;
 
   const progressLine = `${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
 
   const leftLines = [
     `${gold}${sessionName}\x1b[39m`,
-    theme.fg("dim", `🤖 ${modelLine}`),
-    theme.fg("dim", `📁 ${dirText}`),
+    theme.fg("dim", `🧠 ${modelLine}`),
+    theme.fg("dim", `🗂️ ${dirText}`),
     branch ? theme.fg("dim", `🌿 ${branch}`) : "",
   ];
   const rightLines = [progressLine, statsLine, timeTurnsLine];
