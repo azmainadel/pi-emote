@@ -56,6 +56,44 @@ function sessionUsage(entries: any[]): { input: number; output: number; cacheRea
   return totals;
 }
 
+// --- Session metadata helpers ---
+
+/** Compact elapsed time: "42m" below an hour, "1h 5m" above. */
+function formatElapsed(ms: number): string {
+  const totalMin = Math.floor(ms / 60_000);
+  if (totalMin < 60) return `${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** Session start time from the earliest timestamped entry; falls back to now. */
+function sessionStartMs(entries: any[]): number {
+  for (const e of entries) {
+    const ts = e?.timestamp ?? e?.message?.timestamp;
+    if (typeof ts === "string") {
+      const t = Date.parse(ts);
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  return Date.now();
+}
+
+let sessionStartCache = 0;
+function cachedSessionStartMs(entries: any[]): number {
+  if (!sessionStartCache) sessionStartCache = sessionStartMs(entries);
+  return sessionStartCache;
+}
+
+/** Turn count = number of user messages this session. */
+function countTurns(entries: any[]): number {
+  let n = 0;
+  for (const e of entries) {
+    if (e?.type === "message" && e?.message?.role === "user") n++;
+  }
+  return n;
+}
+
 function compactDirectory(cwd: string): string {
   const parts = resolve(cwd).split(sep).filter(Boolean);
   return `/${parts.slice(-2).join(sep)}`;
@@ -98,41 +136,83 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
   const modelLine = [aliases[provider] ?? provider, modelId, thinkingLevel].filter(Boolean).join(" • ");
 
   const context = ctxRef.getContextUsage?.();
+  let entries: any[] = [];
   let totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
-  try { totals = sessionUsage(ctxRef.sessionManager.getEntries()); } catch { /* session entries may be unavailable */ }
+  try {
+    entries = ctxRef.sessionManager.getEntries() ?? [];
+    totals = sessionUsage(entries);
+  } catch { /* session entries may be unavailable */ }
 
   const progress = buildProgressBar(context);
   const statsParts = [
-    "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`, "♻️",
-    `${formatTokens(totals.cacheRead)}`, ...(totals.cacheWrite ? [`W${formatTokens(totals.cacheWrite)}`] : []),
+    "✨", `↑${formatTokens(totals.input)}`, `↓${formatTokens(totals.output)}`,
   ];
+  statsParts.push("♻️", `${formatTokens(totals.cacheRead)}`);
+  if (totals.cacheWrite) statsParts.push(`W${formatTokens(totals.cacheWrite)}`);
   // Hide cost when the model has no pricing (e.g. subscription bridges report zero).
   if (totals.cost > 0) statsParts.push("💰", `$${totals.cost.toFixed(3)}`);
   const statsLine = statsParts.join(" ");
   const cwd = ctxRef.sessionManager.getCwd?.() ?? process.cwd();
   const branch = getGitBranch(cwd);
-  let locationLine = `${compactDirectory(cwd)}${branch ? ` • ${branch}` : ""}`;
   const sessionName = (ctxRef.sessionManager.getSessionName?.() ?? "")
-    .replace(/[\x00-\x1f\x7f]/g, " ").trim();
+    .replace(/[\x00-\x1f\x7f]/g, " ").trim() || "π";
+  const gold = theme.getColorMode() === "truecolor"
+    ? "\x1b[38;2;181;158;101m"
+    : "\x1b[38;5;143m";
+  const dirText = compactDirectory(cwd);
   const infoWidth = width - avatarWidth - 5;
-  let locationDisplay: string;
-  if (sessionName) {
-    const gold = theme.getColorMode() === "truecolor"
-      ? "\x1b[38;2;181;158;101m"
-      : "\x1b[38;5;143m";
-    const displayedName = truncateToWidth(sessionName, Math.max(1, infoWidth - 4), "…");
-    const locationBudget = Math.max(1, infoWidth - visibleWidth(displayedName) - 3);
-    locationLine = truncateToWidth(locationLine, locationBudget, "…");
-    locationDisplay = `${gold}${displayedName}\x1b[39m${theme.fg("dim", ` • ${locationLine}`)}`;
-  } else {
-    locationDisplay = theme.fg("dim", truncateToWidth(locationLine, infoWidth, "…"));
+
+  // Layout: left column = session (gold) / model / dir / branch; right column =
+  // progress / tokens / time·turns. Right content is right-aligned per row.
+  const startMs = cachedSessionStartMs(entries);
+  const elapsed = formatElapsed(Math.max(0, Date.now() - startMs));
+  const turns = countTurns(entries);
+  const timeTurnsLine = `⏱️ ${elapsed} · 🔄 ${turns}`;
+
+  const progressLine = `${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
+
+  const leftLines = [
+    `${gold}${sessionName}\x1b[39m`,
+    theme.fg("dim", `🤖 ${modelLine}`),
+    theme.fg("dim", `📁 ${dirText}`),
+    branch ? theme.fg("dim", `🌿 ${branch}`) : "",
+  ];
+  const rightLines = [progressLine, statsLine, timeTurnsLine];
+
+  const composed: string[] = [];
+  for (let i = 0; i < leftLines.length; i++) {
+    const leftRaw = leftLines[i];
+    let left = leftRaw;
+    let leftW = visibleWidth(left);
+    if (leftW > infoWidth) {
+      left = i === 0
+        ? `${gold}${truncateToWidth(sessionName, infoWidth, "…")}\x1b[39m`
+        : theme.fg("dim", truncateToWidth(leftRaw, infoWidth, "…"));
+      leftW = visibleWidth(left);
+    }
+    const rightRaw = rightLines[i] ?? "";
+    let rightW = visibleWidth(rightRaw);
+    let right = rightRaw;
+    if (rightW > 0) {
+      if (leftW + rightW + 2 > infoWidth) {
+        const budget = infoWidth - leftW - 2;
+        if (budget <= 0) {
+          right = "";
+          rightW = 0;
+        } else {
+          right = theme.fg("dim", truncateToWidth(rightRaw, budget, "…"));
+          rightW = visibleWidth(right);
+        }
+      } else {
+        right = theme.fg("dim", rightRaw);
+        rightW = visibleWidth(right);
+      }
+    }
+    composed.push(rightW > 0
+      ? `${left}${" ".repeat(Math.max(2, infoWidth - leftW - rightW))}${right}`
+      : left);
   }
-  const dimLines = [modelLine, statsLine].map((line) =>
-    theme.fg("dim", visibleWidth(line) > infoWidth ? truncateToWidth(line, infoWidth, "…") : line));
-  const progressLine = `${theme.fg("dim", "🧠 ")}${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
-  const progressDisplay = visibleWidth(progressLine) > infoWidth
-    ? truncateToWidth(progressLine, infoWidth, "…") : progressLine;
-  return [dimLines[0], progressDisplay, dimLines[1], locationDisplay];
+  return composed;
 }
 
 // --- Render helpers ---
