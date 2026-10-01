@@ -125,7 +125,7 @@ function buildProgressBar(usage: any): { bar: string; details: string } {
 
 // --- Info panel ---
 
-function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any, theme: any): string[] {
+function buildInfoLines(width: number, infoWidth: number, ctxRef: any, pi: any, theme: any): string[] {
   if (!ctxRef) return [];
 
   const model = ctxRef.model;
@@ -160,7 +160,6 @@ function buildInfoLines(width: number, avatarWidth: number, ctxRef: any, pi: any
     ? "\x1b[38;2;181;158;101m"
     : "\x1b[38;5;143m";
   const dirText = compactDirectory(cwd);
-  const infoWidth = width - avatarWidth - 5;
 
   // Layout: left column = session (gold) / model / dir / branch; right column =
   // progress / tokens / time·turns. Right content is right-aligned per row.
@@ -330,6 +329,8 @@ export interface WidgetDeps {
   pi: any;
   getCtxRef: () => any;
   getCurrentEmoteSet: () => string;
+  getEmoteVisible: () => boolean;
+  tuiRef: { current: any };
 }
 
 /**
@@ -351,6 +352,7 @@ function isDialogActive(tui: any): boolean {
 export function createWidgetFactory(deps: WidgetDeps) {
   return (tui: any, theme: any) => {
     deps.animator.setTui(tui);
+    deps.tuiRef.current = tui;
     return {
       render(width: number): string[] {
         const { animator, config } = deps;
@@ -369,11 +371,20 @@ export function createWidgetFactory(deps: WidgetDeps) {
         const dim = (text: string) => theme.fg("dim", text);
         const separatorColor = dim;
         const border = dim("─".repeat(width));
+        const showEmote = deps.getEmoteVisible();
         const avatarWidth = frame.kind === "text" ? TEXT_CANVAS_COLS : config.size;
-        const infoLines = buildInfoLines(width, avatarWidth, deps.getCtxRef(), deps.pi, theme);
+        const infoWidth = showEmote ? width - avatarWidth - 5 : width - 2;
+        const infoLines = buildInfoLines(width, infoWidth, deps.getCtxRef(), deps.pi, theme);
 
         const lines: string[] = [];
         lines.push(border);
+
+        if (!showEmote) {
+          // Avatar and separator hidden — info panel takes the full width.
+          for (const line of infoLines) lines.push(` ${line}`);
+          lines.push("");
+          return lines;
+        }
 
         if (frame.kind === "image") {
           if (frame.cursorAdvances) {

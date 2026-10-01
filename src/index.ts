@@ -82,6 +82,8 @@ export default function (pi: ExtensionAPI) {
   let currentEmoteSet = "default";
   let ctxRef: any = null;
   let widgetActive = false;
+  let emoteVisible = true;
+  const tuiRef = { current: null as any };
   let lastResolved = resolveRenderer(config.terminals, userConfiguredTerminals);
   let renderer = createRendererFromResolved(lastResolved, config.size);
 
@@ -131,8 +133,8 @@ export default function (pi: ExtensionAPI) {
 
   // --- /set-emote: pick an emote set interactively ---
 
-  pi.registerCommand("set-emote", {
-    description: "Pick the emote set for the avatar",
+  pi.registerCommand("emote:switch", {
+    description: "Switch the emote set for the avatar",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
 
@@ -162,7 +164,7 @@ export default function (pi: ExtensionAPI) {
         mkdirSync(dirname(userConfigPath), { recursive: true });
         writeFileSync(userConfigPath, JSON.stringify(userConfig, null, 2) + "\n");
       } catch (err) {
-        log(`set-emote: failed to persist user config: ${err}`);
+        log(`emote:switch: failed to persist user config: ${err}`);
         ctx.ui.notify("Could not save emote set choice", "error");
         return;
       }
@@ -176,7 +178,7 @@ export default function (pi: ExtensionAPI) {
       if (widgetActive && animator.currentState === "idle") animator.enterIdle();
       else if (widgetActive) renderer.showRandomFrame(animator.currentState, true);
 
-      log(`set-emote: switched to "${setName}"`);
+      log(`emote:switch: switched to "${setName}"`);
       ctx.ui.notify(`Emote set: ${setName}`, "info");
     },
   });
@@ -222,6 +224,8 @@ export default function (pi: ExtensionAPI) {
       pi,
       getCtxRef: () => ctxRef,
       getCurrentEmoteSet: () => currentEmoteSet,
+      getEmoteVisible: () => emoteVisible,
+      tuiRef,
     }), { placement: "aboveEditor" });
 
     widgetActive = true;
@@ -237,6 +241,19 @@ export default function (pi: ExtensionAPI) {
     }
     animator.setTui(null);
     ctxRef = null;
+  });
+
+  // --- /emote:toggle: hide/show the animated avatar + separator (info stays) ---
+
+  pi.registerCommand("emote:toggle", {
+    description: "Show or hide the emote avatar (info panel stays)",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+      emoteVisible = !emoteVisible;
+      tuiRef.current?.requestRender?.();
+      log(`emote:toggle -> visible=${emoteVisible}`);
+      ctx.ui.notify(emoteVisible ? "Emote visible" : "Emote hidden — info panel stays", "info");
+    },
   });
 
   pi.on("model_select", async (event) => {
