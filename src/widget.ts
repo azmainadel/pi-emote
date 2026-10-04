@@ -168,7 +168,11 @@ function buildInfoLines(width: number, infoWidth: number, ctxRef: any, pi: any, 
   const turns = countTurns(entries);
   const timeTurnsLine = `⏰ ${elapsed} · 🔁 ${turns}`;
 
-  const progressLine = `${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
+  // Status dot: color reflects context pressure; bar stays white for stealth.
+  const percent = context?.percent ?? 0;
+  const dotToken = percent < 60 ? "success" : percent < 85 ? "warning" : "error";
+  const dot = theme.fg(dotToken, "●");
+  const progressLine = `${dot} ${theme.fg("text", `▕${progress.bar}▏`)}${theme.fg("dim", ` ${progress.details}`)}`;
 
   const leftLines = [
     `${gold}${sessionName}\x1b[39m`,

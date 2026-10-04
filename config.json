@@ -9,31 +9,42 @@
     "success": 1200,
     "failure": 1200
   },
-  "blinkInterval": [2000, 4000],
+  "blinkInterval": [
+    2000,
+    4000
+  ],
   "talkTickMs": 120,
   "cycleMs": 500,
   "emotes": [
-    { "model": "*", "emote-set": "xyntherys" }
+    {
+      "model": "*",
+      "emote-set": "xyntherys"
+    }
   ],
   "terminals": [
-    { "match": "zellij", "render": "ascii" },
-    { "match": "tmux", "render": "auto" },
-    { "match": "screen", "render": "ascii" },
-    { "match": "wezterm", "render": "iterm2" },
-    { "match": "ghostty", "render": "kitty" },
-    { "match": "warpterminal", "render": "kitty" }
-  ],
-  "theme": {
-    "model-name": "thinking-level-color",
-    "progress-bar": {
-      "default": "text",
-      "cache-hit": "success",
-      "cache-miss": "error",
-      "almost-full": "warning"
+    {
+      "match": "zellij",
+      "render": "ascii"
     },
-    "token-info": "dim",
-    "working-directory": "warning",
-    "border": "thinking-level-color",
-    "vertical-separator": "thinking-level-color"
-  }
+    {
+      "match": "tmux",
+      "render": "auto"
+    },
+    {
+      "match": "screen",
+      "render": "ascii"
+    },
+    {
+      "match": "wezterm",
+      "render": "iterm2"
+    },
+    {
+      "match": "ghostty",
+      "render": "kitty"
+    },
+    {
+      "match": "warpterminal",
+      "render": "kitty"
+    }
+  ]
 }
