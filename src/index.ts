@@ -92,7 +92,7 @@ export default function (pi: ExtensionAPI) {
   function loadEmoteSet(setName: string) {
     currentEmoteSet = setName;
 
-    const setDir = findEmoteSetDir(setName, extDir, cwd);
+    let setDir = findEmoteSetDir(setName, extDir, cwd);
     const isAsciiOnly = existsSync(join(setDir, "ascii.yaml")) && !hasImageFrames(setDir);
 
     if (isAsciiOnly) {
@@ -107,6 +107,16 @@ export default function (pi: ExtensionAPI) {
       if (renderer.constructor !== detected.constructor) {
         renderer = detected;
         animator.setRenderer(renderer);
+      }
+
+      // Terminal has no image support — fall back to the ASCII set's frames
+      // so the panel still shows something instead of going blank.
+      if (renderer instanceof AsciiRenderer && !existsSync(join(setDir, "ascii.yaml"))) {
+        const asciiDir = findEmoteSetDir("ascii", extDir, cwd);
+        if (existsSync(join(asciiDir, "ascii.yaml"))) {
+          log(`loadEmoteSet: "${setName}" has no ascii frames and terminal is image-less — using "ascii" set`);
+          setDir = asciiDir;
+        }
       }
     }
 
